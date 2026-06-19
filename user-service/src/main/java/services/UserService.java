@@ -9,6 +9,7 @@ import com.library.model.MembershipStatus;
 import com.library.model.Role;
 import com.library.model.User;
 
+import dtos.MembershipResponse;
 import dtos.RegisterUserRequest;
 import dtos.UpdateUserRequest;
 import dtos.UserResponse;
@@ -105,5 +106,18 @@ public class UserService {
                 user.getMembershipStatus(),
                 user.isSuspended()
         );
+    }
+    
+    public MembershipResponse getMembershipInfo(Long id) {
+        User user = repository.findById(id)
+                .orElseThrow();
+
+        if (user.getMembershipExpiryDate().isBefore(LocalDate.now())
+                && user.getMembershipStatus() != MembershipStatus.SUSPENDED) {
+            user.setMembershipStatus(MembershipStatus.EXPIRED);
+            repository.save(user);
+        }
+
+        return new MembershipResponse(user.getId(), user.getMembershipStatus().name(), user.isSuspended());
     }
 }

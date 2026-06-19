@@ -2,6 +2,10 @@ package services;
 
 import java.util.Date;
 
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import com.library.model.User;
@@ -12,8 +16,12 @@ import io.jsonwebtoken.security.Keys;
 @Component
 public class JwtService {
 	
-	private final String SECRET =
-            "very-long-secret-key-for-library-system";
+	@Value("${jwt.secret}")
+	private String secret;
+	
+	private SecretKey key() {
+		return Keys.hmacShaKeyFor(secret.getBytes());
+	}
 	
 	public String generateToken(User user) {
 		 return Jwts.builder()
@@ -26,9 +34,7 @@ public class JwtService {
 	                    )
 	                )
 	                .signWith(
-	                    Keys.hmacShaKeyFor(
-	                        SECRET.getBytes()
-	                    )
+	                    key()
 	                )
 	                .compact();
 	}
@@ -37,13 +43,26 @@ public class JwtService {
 
         return Jwts.parser()
                 .verifyWith(
-                    Keys.hmacShaKeyFor(
-                        SECRET.getBytes()
-                    )
+                    key()
                 )
                 .build()
                 .parseSignedClaims(token)
                 .getPayload()
                 .getSubject();
+    }
+	
+	public boolean isTokenValid(String token, UserDetails userDetails) {
+        try {
+            String username = extractUsername(token);
+            Date expiration = Jwts.parser()
+                    .verifyWith(key())
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload()
+                    .getExpiration();
+            return username.equals(userDetails.getUsername()) && expiration.after(new Date());
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

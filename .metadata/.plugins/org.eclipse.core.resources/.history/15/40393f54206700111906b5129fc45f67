@@ -1,0 +1,5 @@
+package com.library.book_service;
+
+public class DataInitializer {
+
+}

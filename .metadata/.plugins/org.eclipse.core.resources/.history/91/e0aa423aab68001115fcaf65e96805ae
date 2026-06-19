@@ -1,0 +1,24 @@
+package services;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import clients.UserClient;
+
+@Service
+public class NotificationService {
+
+	private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+
+    private final UserClient userClient;
+    private final EmailService emailService;
+    
+	public NotificationService(UserClient userClient, EmailService emailService) {
+		super();
+		this.userClient = userClient;
+		this.emailService = emailService;
+	}
+    
+    
+}

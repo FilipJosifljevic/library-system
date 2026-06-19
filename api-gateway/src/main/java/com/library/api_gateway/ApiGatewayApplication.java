@@ -2,8 +2,10 @@ package com.library.api_gateway;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
+@ComponentScan(basePackages = {"com.library.api_gateway", "security", "filters"})
 public class ApiGatewayApplication {
 
 	public static void main(String[] args) {

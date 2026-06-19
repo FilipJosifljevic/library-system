@@ -2,8 +2,20 @@ package com.library.book_service;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 
 @SpringBootApplication
+@ComponentScan(basePackages = {
+	    "com.library.book_service",
+	    "com.library.model",
+	    "controllers",
+	    "services",
+	    "repositories",
+	    "dtos",
+	    "exceptions"
+	})
+@EnableMongoRepositories(basePackages = "repositories")
 public class BookServiceApplication {
 
 	public static void main(String[] args) {

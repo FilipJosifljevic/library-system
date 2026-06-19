@@ -1,0 +1,4 @@
+spring.application.name=book-service
+spring.config.import=configserver:http://localhost:8888
+
+spring.data.mongodb.uri=mongodb://library:library123@localhost:27017/book_db?authSource=admin

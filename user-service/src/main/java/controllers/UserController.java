@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.library.model.MembershipStatus;
 
+import dtos.MembershipResponse;
 import dtos.RegisterUserRequest;
 import dtos.UpdateUserRequest;
 import dtos.UserResponse;
@@ -55,10 +56,9 @@ public class UserController {
         service.suspend(id);
     }
 
+    
     @GetMapping("/{id}/membership")
-    public MembershipStatus membership(
-            @PathVariable Long id) {
-
-        return service.checkMembership(id);
+    public MembershipResponse getMembership(@PathVariable Long id) {
+        return service.getMembershipInfo(id);
     }
 }

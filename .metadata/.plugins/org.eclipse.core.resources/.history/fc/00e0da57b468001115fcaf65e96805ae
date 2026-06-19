@@ -1,0 +1,85 @@
+package services;
+
+import java.math.BigDecimal;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import events.LoanOverdueEvent;
+import models.Fine;
+import repositories.FineRepository;
+
+@Service
+public class FineService {
+
+	private static final Logger log = LoggerFactory.getLogger(FineService.class);
+
+    private final FineRepository repository;
+
+    @Value("${fine.daily-rate}")
+    private BigDecimal dailyRate;
+    
+    public FineService(FineRepository repository) {
+        this.repository = repository;
+    }
+    
+    public void createFineFromEvent(LoanOverdueEvent event) {
+        // Idempotency: don't create a duplicate fine for the same loan
+        if (repository.findByLoanId(event.loanId()).isPresent()) {
+            log.info("Fine already exists for loanId={}, skipping", event.loanId());
+            return;
+        }
+
+        Fine fine = new Fine();
+        fine.setLoanId(event.loanId());
+        fine.setUserId(event.userId());
+        fine.setBookId(event.bookId());
+        fine.setBookTitle(event.bookTitle());
+        fine.setDueDate(event.dueDate());
+        fine.setDaysOverdue(event.daysOverdue());
+        fine.setAmount(dailyRate.multiply(BigDecimal.valueOf(event.daysOverdue())));
+        fine.setStatus(FineStatus.PENDING);
+        fine.setCreatedDate(LocalDate.now());
+
+        repository.save(fine);
+
+        log.info("Created fine for loanId={}, userId={}, amount={}",
+                event.loanId(), event.userId(), fine.getAmount());
+    }
+
+    public FineResponse getById(Long id) {
+        return map(repository.findById(id).orElseThrow(() -> new FineNotFoundException(id)));
+    }
+
+    public List<FineResponse> getByUser(Long userId) {
+        return repository.findByUserId(userId).stream().map(this::map).toList();
+    }
+
+    public List<FineResponse> getAll() {
+        return repository.findAll().stream().map(this::map).toList();
+    }
+
+    public FineResponse pay(Long id) {
+        Fine fine = repository.findById(id).orElseThrow(() -> new FineNotFoundException(id));
+
+        if (fine.getStatus() == FineStatus.PAID) {
+            throw new FineAlreadyPaidException(id);
+        }
+
+        fine.setStatus(FineStatus.PAID);
+        fine.setPaidDate(LocalDate.now());
+        repository.save(fine);
+
+        return map(fine);
+    }
+
+    private FineResponse map(Fine fine) {
+        return new FineResponse(
+                fine.getId(), fine.getLoanId(), fine.getUserId(), fine.getBookId(), fine.getBookTitle(),
+                fine.getDueDate(), fine.getDaysOverdue(), fine.getAmount(), fine.getStatus(),
+                fine.getCreatedDate(), fine.getPaidDate()
+        );
+    }
+}
