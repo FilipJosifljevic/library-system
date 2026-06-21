@@ -1,0 +1,330 @@
+networks:
+  library-network:
+    driver: bridge
+
+volumes:
+  postgres-user-data:
+  postgres-loan-data:
+  postgres-fine-data:
+  mongo-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+
+  # ==================== INFRASTRUCTURE ====================
+
+  postgres-user:
+    image: postgres:16-alpine
+    container_name: postgres-user
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: library123
+    volumes:
+      - postgres-user-data:/var/lib/postgresql/data
+    networks:
+      - library-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U library -d user_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-loan:
+    image: postgres:16-alpine
+    container_name: postgres-loan
+    environment:
+      POSTGRES_DB: loan_db
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: library123
+    volumes:
+      - postgres-loan-data:/var/lib/postgresql/data
+    networks:
+      - library-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U library -d loan_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-fine:
+    image: postgres:16-alpine
+    container_name: postgres-fine
+    environment:
+      POSTGRES_DB: fine_db
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: library123
+    volumes:
+      - postgres-fine-data:/var/lib/postgresql/data
+    networks:
+      - library-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U library -d fine_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7
+    container_name: mongo-books
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: library
+      MONGO_INITDB_ROOT_PASSWORD: library123
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - library-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    networks:
+      - library-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ==================== SPRING CLOUD INFRASTRUCTURE ====================
+
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    container_name: config-server
+    environment:
+      SPRING_PROFILES_ACTIVE: native,docker
+      SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS: file:///config-repo
+    volumes:
+      - ./config-repo:/config-repo
+    ports:
+      - "8888:8888"
+    networks:
+      - library-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8888/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  discovery-server:
+    build:
+      context: ./discovery-server
+      dockerfile: Dockerfile
+    container_name: discovery-server
+    environment:
+      EUREKA_INSTANCE_HOSTNAME: discovery-server
+      EUREKA_CLIENT_REGISTER_WITH_EUREKA: false
+      EUREKA_CLIENT_FETCH_REGISTRY: false
+    ports:
+      - "8761:8761"
+    networks:
+      - library-network
+    depends_on:
+      config-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ==================== BUSINESS SERVICES ====================
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-user:5432/user_db
+      SPRING_DATASOURCE_USERNAME: library
+      SPRING_DATASOURCE_PASSWORD: library123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    ports:
+      - "8081:8081"
+    networks:
+      - library-network
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      postgres-user:
+        condition: service_healthy
+
+  book-service:
+    build:
+      context: ./book-service
+      dockerfile: Dockerfile
+    container_name: book-service
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_MONGODB_URI: mongodb://library:library123@mongo:27017/book_db?authSource=admin
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    ports:
+      - "8084:8084"
+    networks:
+      - library-network
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+
+  loan-service:
+    build:
+      context: ./loan-service
+      dockerfile: Dockerfile
+    container_name: loan-service
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-loan:5432/loan_db
+      SPRING_DATASOURCE_USERNAME: library
+      SPRING_DATASOURCE_PASSWORD: library123
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    ports:
+      - "8082:8082"
+    networks:
+      - library-network
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      postgres-loan:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    ports:
+      - "8083:8083"
+    networks:
+      - library-network
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  fine-service:
+    build:
+      context: ./fine-service
+      dockerfile: Dockerfile
+    container_name: fine-service
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-fine:5432/fine_db
+      SPRING_DATASOURCE_USERNAME: library
+      SPRING_DATASOURCE_PASSWORD: library123
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    ports:
+      - "8085:8085"
+    networks:
+      - library-network
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      postgres-fine:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    ports:
+      - "8080:8080"
+    networks:
+      - library-network
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+
+  # ==================== MONITORING ====================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./config-repo/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - library-network
+    depends_on:
+      - config-server
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_FEATURE_TOGGLES_ENABLE: ""
+      GF_SERVER_ENABLE_GZIP: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/library-dashboard.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    networks:
+      - library-network
+    depends_on:
+      - prometheus
