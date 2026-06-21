@@ -1,0 +1,28 @@
+# Maven
+target/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.settings/
+.classpath
+.project
+.sts4-cache/
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker/
+
+# Environment
+*.env
+.env
+
+# OS
+.DS_Store
+Thumbs.db

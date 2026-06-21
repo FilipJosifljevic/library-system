@@ -1,2 +1,0 @@
-spring.application.name=user-service
-jwt.secret=very-long-secret-key-for-library-system-please-change-this-in-production

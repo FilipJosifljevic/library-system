@@ -1,2 +1,0 @@
-spring.application.name=book-service
-spring.config.import="configserver:http://localhost:8888"
