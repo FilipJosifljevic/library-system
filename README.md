@@ -418,8 +418,6 @@ hikaricp_connections_active{application="user-service"}
 ### Grafana
 
 Dostupno na: **http://localhost:3000**
-- Korisničko ime: `admin`
-- Lozinka: `admin123`
 
 Dashboard **Library System Monitoring** je automatski provizioniran i sadrži:
 - JVM Heap i Non-Heap memorija po servisu
@@ -431,6 +429,7 @@ Dashboard **Library System Monitoring** je automatski provizioniran i sadrži:
 - GC pauze
 - HikariCP connection pool metrike
 
+![Grafana Dashboard example](images/grafana_dashboard.png)
 ---
 
 ## API dokumentacija
